@@ -31,13 +31,10 @@ def load_iris_dataset(train_ratio):
     random.seed(1)
 
     # Vous pouvez utiliser des valeurs numériques pour les différents types de classes, tel que :
-    conversion_labels = {'Iris-setosa': 0,
-                         'Iris-versicolor': 1, 'Iris-virginica': 2}
+    conversion_labels = {'Iris-setosa': 0,'Iris-versicolor': 1, 'Iris-virginica': 2}
 
     # Le fichier du dataset est dans le dossier datasets en attaché
     f = open('datasets/bezdekIris.data', 'r')
-
-    # TODO : le code ici pour lire le dataset
 
     # REMARQUE très importante :
     # remarquez bien comment les exemples sont ordonnés dans
@@ -94,7 +91,6 @@ def load_wine_dataset(train_ratio):
     # Le fichier du dataset est dans le dossier datasets en attaché
     f = open('datasets/binary-winequality-white.csv', 'r')
 
-    # TODO : le code ici pour lire le dataset
     dataset = np.loadtxt(f, delimiter=',', dtype=float)
     random.shuffle(dataset)
     X = dataset[:, :11]
@@ -142,8 +138,7 @@ def load_abalone_dataset(train_ratio):
     # Male : 0, Female : 1, Infant : 2
     conversion_sexe = {'M': 0, 'F': 1, 'I': 2}
 
-    dataset = np.loadtxt(f, delimiter=',', dtype=float, converters={
-                         0: lambda s: conversion_sexe[s]})
+    dataset = np.loadtxt(f, delimiter=',', dtype=float, converters={0: lambda s: conversion_sexe[s]})
     random.shuffle(dataset)
     X = dataset[:, :8]
     # make the first column of X to be integers in X

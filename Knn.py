@@ -9,9 +9,7 @@ class Knn(Classifier):
         self.train_data = None
         self.train_labels = None
 
-    def train(
-        self, train, train_labels
-    ):  # vous pouvez rajouter d'autres attributs au besoin
+    def train(self, train, train_labels):  # vous pouvez rajouter d'autres attributs au besoin
         self.train_data = train
         self.train_labels = train_labels
 
@@ -63,5 +61,4 @@ class Knn(Classifier):
             p = 3  # You can change the value of p as needed
             return np.sum(np.abs(self.train_data - x) ** p, axis=1) ** (1 / p)
         else:
-            raise ValueError(f"Unsupported distance metric: {
-                             self.distance_metric}")
+            raise ValueError(f"Unsupported distance metric: {self.distance_metric}")
