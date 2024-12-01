@@ -9,16 +9,21 @@ class Knn(Classifier):
         self.train_data = None
         self.train_labels = None
 
-    def train(self, train, train_labels):  # vous pouvez rajouter d'autres attributs au besoin
+    def train(
+        self, train, train_labels
+    ):  # vous pouvez rajouter d'autres attributs au besoin
         self.train_data = train
         self.train_labels = train_labels
 
-    def predict(self, x):
+    def predict(self, x: int) -> int:
+        """
+        Prédire la classe d'un exemple x donné en entrée
+        exemple est de taille 1xm
+        """
         distances = self._compute_distances(x)
-        k_nearest_indices = np.argsort(distances)[: self.k]
-        k_nearest_labels = self.train_labels[k_nearest_indices]
-        resultat = np.argmax(np.bincount(k_nearest_labels))
-        return resultat
+        nearest_neighbors = self.train_labels[np.argsort(distances)[: self.k]]
+        unique, counts = np.unique(nearest_neighbors, return_counts=True)
+        return unique[np.argmax(counts)]
 
     def evaluate(self, X, y):
         predictions = np.array([self.predict(x) for x in X])
@@ -61,4 +66,5 @@ class Knn(Classifier):
             p = 3  # You can change the value of p as needed
             return np.sum(np.abs(self.train_data - x) ** p, axis=1) ** (1 / p)
         else:
-            raise ValueError(f"Unsupported distance metric: {self.distance_metric}")
+            raise ValueError(f"Unsupported distance metric: {
+                             self.distance_metric}")

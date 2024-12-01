@@ -1,278 +1,314 @@
-import time
 import numpy as np
-import sys
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
+
 from load_datasets import load_iris_dataset, load_wine_dataset, load_abalone_dataset
 from NaiveBayes import NaiveBayes
-from sklearn.naive_bayes import GaussianNB
-from Knn import Knn  # importer la classe du Knn
-# importer d'autres fichiers et classes si vous en avez développés
-from classifieur import Classifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn import metrics
+from Knn import Knn
 
 
-def precision(model: Classifier, X, y):
-    predictions = np.array([model.predict(x.reshape(1, -1))
-                           for x in X])  # Reshape x to 2D
-    true_positive = np.sum((predictions == 1) & (y == 1))
-    false_positive = np.sum((predictions == 1) & (y != 1))
-    return true_positive / (true_positive + false_positive) if (true_positive + false_positive) > 0 else 0
+def accuracy(predictions: list, values: list):
+    return np.sum(predictions == values) / len(values)
 
 
-def recall(model: Classifier, X, y):
-    predictions = np.array([model.predict(x.reshape(1, -1))
-                           for x in X])  # Reshape x to 2D
-    true_positive = np.sum((predictions == 1) & (y == 1))
-    false_negative = np.sum((predictions != 1) & (y == 1))
-    return true_positive / (true_positive + false_negative) if (true_positive + false_negative) > 0 else 0
+def precision(predictions: list, values: list):
+    true_positives = np.sum((predictions == 1) & (values == 1))
+    false_positives = np.sum((predictions == 1) & (values == 0))
+    return true_positives / (true_positives + false_positives) if (true_positives + false_positives) != 0 else 0
 
 
-def f1_score(model: Classifier, X, y):
-    prec = precision(model, X, y)
-    rec = recall(model, X, y)
-    return 2 * (prec * rec) / (prec + rec) if (prec + rec) > 0 else 0
+def recall(predictions: list, values: list):
+    true_positives = np.sum((predictions == 1) & (values == 1))
+    false_negatives = np.sum((predictions == 0) & (values == 1))
+    return true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) != 0 else 0
 
 
-def confusion_matrix(model: Classifier, X, y):
-    predictions = np.array([model.predict(x.reshape(1, -1))
-                           for x in X])  # Reshape x to 2D
-    unique_labels = np.unique(y)
-    matrix = np.zeros((len(unique_labels), len(unique_labels)), dtype=int)
-    for true_label, pred_label in zip(y, predictions):
+def f1_score(predictions: list, values: list):
+    p = precision(predictions, values)
+    r = recall(predictions, values)
+    return 2 * p * r / (p + r) if (p + r) != 0 else 0
+
+
+def confusion_matrix(predictions: list, values: list):
+    unique_values = np.unique(values)
+    matrix = np.zeros((len(unique_values), len(unique_values)))
+    for true_label, pred_label in zip(values, predictions):
         matrix[true_label, pred_label] += 1
     return matrix
 
 
-def cross_validation_knn(train, train_labels, k_values, distance_metrics, num_folds=5):
-    fold_size = len(train) // num_folds
+def cross_validation_knn(train: np.ndarray, labels: np.ndarray, k_values: list, distances: list, folds: int) -> dict:
+    """
+    Cross validation from scratch for KNN algorithm.
+    """
+    fold_size = len(train) // folds
+    results = {}
     best_k = None
-    best_distance_metric = None
+    best_distance = None
     best_accuracy = 0
 
-    print("Cross validation:")
     for k in k_values:
-        for distance_metric in distance_metrics:
+        for distance in distances:
             accuracies = []
-            for fold in range(num_folds):
-                # Split the data into training and validation sets
-                validation_start = fold * fold_size
-                validation_end = validation_start + fold_size
-                validation_data = train[validation_start:validation_end]
-                validation_labels = train_labels[validation_start:validation_end]
-                training_data = np.concatenate(
-                    (train[:validation_start], train[validation_end:]), axis=0)
-                training_labels = np.concatenate(
-                    (train_labels[:validation_start], train_labels[validation_end:]), axis=0)
+            for fold in range(folds):
+                start = fold * fold_size
+                end = start + fold_size
+                train_fold = np.concatenate([train[:start], train[end:]])
+                labels_fold = np.concatenate([labels[:start], labels[end:]])
+                validation_fold = train[start:end]
+                validation_labels = labels[start:end]
+                predictions = []
 
-                # Train the model
-                knn = Knn(k=k, distance_metric=distance_metric)
-                knn.train(training_data, training_labels)
+                knn = Knn(k=k, distance_metric=distance)
+                knn.train(train_fold, labels_fold)
 
-                # Evaluate the model
-                accuracy = knn.evaluate(validation_data, validation_labels)
+                accuracy = knn.evaluate(validation_fold, validation_labels)
                 accuracies.append(accuracy)
 
-            # Compute the average accuracy
-            average_accuracy = np.mean(accuracies)
-            print(f'k: {k}, distance_metric: {distance_metric}, accuracy: {average_accuracy:.4f}')
-            # Update the best hyperparameters
-            if average_accuracy > best_accuracy:
-                best_accuracy = average_accuracy
+            mean_accuracy = np.mean(accuracies)
+            results[(k, distance)] = mean_accuracy
+
+            if mean_accuracy > best_accuracy:
+                best_accuracy = mean_accuracy
                 best_k = k
-                best_distance_metric = distance_metric
+                best_distance = distance
 
-    return best_k, best_distance_metric, best_accuracy
+    return results, best_k, best_distance, best_accuracy
 
 
-"""
-C'est le fichier main duquel nous allons tout lancer
-Vous allez dire en commentaire c'est quoi les parametres que vous avez utilises
-En gros, vous allez :
-1- Initialiser votre classifieur avec ses parametres
-2- Charger les datasets
-3- Entrainer votre classifieur
-4- Le tester
-"""
+def print_prediction_summary(predictions: list, values: list):
+    print(f"\tConfusion matrix:\n{confusion_matrix(predictions, values)}")
 
-# Initialisez vos paramètres
+    for i in range(np.unique(values).shape[0]):
+        print(f"\n\tClass {i}")
+        print(f"\t\tAccuracy: {accuracy(predictions == i, values == i)}")
+        print(f"\t\tPrecision: {precision(predictions == i, values == i)}")
+        print(f"\t\tRecall: {recall(predictions == i, values == i)}")
+        print(f"\t\tF1-score: {f1_score(predictions == i, values == i)}")
+
+
 train_ratio = 0.7
+train_iris, train_labels_iris, test_iris, test_labels_iris = load_iris_dataset(
+    train_ratio)
+train_wine, train_labels_wine, test_wine, test_labels_wine = load_wine_dataset(
+    train_ratio)
+train_abalone, train_labels_abalone, test_abalone, test_labels_abalone = load_abalone_dataset(
+    train_ratio)
 
-# Charger/lire les datasets
-train_iris, train_labels_iris, test_iris, test_labels_iris = load_iris_dataset(train_ratio)
-train_wine, train_labels_wine, test_wine, test_labels_wine = load_wine_dataset(train_ratio)
-train_abalone, train_labels_abalone, test_abalone, test_labels_abalone = load_abalone_dataset(train_ratio)
+# print(len(train_iris), len(train_labels_iris), len(test_iris), len(test_labels_iris))
+# print(len(train_wine), len(train_labels_wine), len(test_wine), len(test_labels_wine))
+# print(len(train_abalone), len(train_labels_abalone), len(test_abalone), len(test_labels_abalone))
 
+# Naive Bayes
+nb_iris = NaiveBayes()
+nb_abalone = NaiveBayes()
+nb_wine = NaiveBayes()
 
-# Initialisez/instanciez vos classifieurs avec leurs paramètres
-naive_bayes_iris = NaiveBayes()
-naive_bayes_abalone = NaiveBayes()
-naive_bayes_wine = NaiveBayes()
+nb_iris.train(train_iris, train_labels_iris)
+nb_abalone.train(train_abalone, train_labels_abalone)
+nb_wine.train(train_wine, train_labels_wine)
 
-# Scikit-learn Naive Bayes classifiers
-sklearn_nb_iris = GaussianNB()
-sklearn_nb_abalone = GaussianNB()
-sklearn_nb_wine = GaussianNB()
+nb_iris.train(train_iris, train_labels_iris)
+nb_abalone.train(train_abalone, train_labels_abalone)
+nb_wine.train(train_wine, train_labels_wine)
 
-# Entrainez votre classifieur Naive Bayes sur chaque dataset séparément
-naive_bayes_iris.train(train_iris, train_labels_iris)
-naive_bayes_abalone.train(train_abalone, train_labels_abalone)
-naive_bayes_wine.train(train_wine, train_labels_wine)
-
-# Entrainez les classifieurs scikit-learn
-sklearn_nb_iris.fit(train_iris, train_labels_iris)
-sklearn_nb_abalone.fit(train_abalone, train_labels_abalone)
-sklearn_nb_wine.fit(train_wine, train_labels_wine)
-
-"""
-Apres avoir fait l'entrainement, évaluez votre modele sur 
-les donnees d'entrainement.
-IMPORTANT : 
-    Vous devez afficher ici avec la commande print() de python,
-    - la matrice de confusion (confusion matrix)
-    - l'accuracy
-    - la precision (precision)
-    - le rappel (recall)
-    - le F1-score
-"""
-
-# Evaluer Naive Bayes sur chaque dataset d'entrainement
-
-# Evaluation on Training Data (Naive Bayes)
 print("\n\u001b[31;1mTrain Naive Bayes:\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {naive_bayes_iris.evaluate(train_iris, train_labels_iris):.4f}\n\tPrecision: {precision(naive_bayes_iris, train_iris, train_labels_iris):.4f}\n\tRecall: {recall(naive_bayes_iris, train_iris, train_labels_iris):.4f}\n\tF1-score: {f1_score(naive_bayes_iris, train_iris, train_labels_iris):.4f}\n\tConfusion Matrix: \n{confusion_matrix(naive_bayes_iris, train_iris, train_labels_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {naive_bayes_wine.evaluate(train_wine, train_labels_wine):.4f}\n\tPrecision: {precision(naive_bayes_wine, train_wine, train_labels_wine):.4f}\n\tRecall: {recall(naive_bayes_wine, train_wine, train_labels_wine):.4f}\n\tF1-score: {f1_score(naive_bayes_wine, train_wine, train_labels_wine):.4f}\n\tConfusion Matrix: \n{confusion_matrix(naive_bayes_wine, train_wine, train_labels_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {naive_bayes_abalone.evaluate(train_abalone, train_labels_abalone):.4f}\n\tPrecision: {precision(naive_bayes_abalone, train_abalone, train_labels_abalone):.4f}\n\tRecall: {recall(naive_bayes_abalone, train_abalone, train_labels_abalone):.4f}\n\tF1-score: {f1_score(naive_bayes_abalone, train_abalone, train_labels_abalone):.4f}\n\tConfusion Matrix: \n{confusion_matrix(naive_bayes_abalone, train_abalone, train_labels_abalone)}\n')
+print("\u001b[32;1mIris:\u001b[0m")
+# Display the confusion matric and the accuracy, precision, recall and f1-score for each classes of each datasets
+predictions = np.array([nb_iris.predict(x) for x in train_iris])
+print_prediction_summary(predictions, train_labels_iris)
 
-# Sklearn Training Data Evaluation
-sklearn_nb_predict_iris = sklearn_nb_iris.predict(train_iris)
-sklearn_nb_predict_wine = sklearn_nb_wine.predict(train_wine)
-sklearn_nb_predict_abalone = sklearn_nb_abalone.predict(train_abalone)
-print("\n\u001b[31;1mTrain Naive Bayes (sklearn):\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {sklearn_nb_iris.score(train_iris, train_labels_iris):.4f}\n\tPrecision: {metrics.precision_score(train_labels_iris, sklearn_nb_predict_iris, average="micro"):.4f}\n\tRecall: {metrics.recall_score(train_labels_iris, sklearn_nb_predict_iris, average="micro"):.4f}\n\tF1-score: {metrics.f1_score(train_labels_iris, sklearn_nb_predict_iris, average="micro"):.4f}\n\tConfusion Matrix: \n{metrics.confusion_matrix(train_labels_iris, sklearn_nb_predict_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {sklearn_nb_wine.score(train_wine, train_labels_wine):.4f}\n\tPrecision: {metrics.precision_score(train_labels_wine, sklearn_nb_predict_wine, average="micro"):.4f}\n\tRecall: {metrics.recall_score(train_labels_wine, sklearn_nb_predict_wine, average="micro"):.4f}\n\tF1-score: {metrics.f1_score(train_labels_wine, sklearn_nb_predict_wine, average="micro"):.4f}\n\tConfusion Matrix: \n{metrics.confusion_matrix(train_labels_wine, sklearn_nb_predict_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {sklearn_nb_abalone.score(train_abalone, train_labels_abalone):.4f}\n\tPrecision: {metrics.precision_score(train_labels_abalone, sklearn_nb_predict_abalone, average="micro"):.4f}\n\tRecall: {metrics.recall_score(train_labels_abalone, sklearn_nb_predict_abalone, average="micro"):.4f}\n\tF1-score: {metrics.f1_score(train_labels_abalone, sklearn_nb_predict_abalone, average="micro"):.4f}\n\tConfusion Matrix: \n{metrics.confusion_matrix(train_labels_abalone, sklearn_nb_predict_abalone)}\n')
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = np.array([nb_abalone.predict(x) for x in train_abalone])
+print_prediction_summary(predictions, train_labels_abalone)
 
-# Tester votre classifieur
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = np.array([nb_wine.predict(x) for x in train_wine])
+print_prediction_summary(predictions, train_labels_wine)
 
-"""
-Finalement, évaluez votre modele sur les donnees de test.
-IMPORTANT : 
-    Vous devez afficher ici avec la commande print() de python,
-    - la matrice de confusion (confusion matrix)
-    - l'accuracy
-    - la precision (precision)
-    - le rappel (recall)
-    - le F1-score
-"""
-# Evaluation on Testing Data
-print("\n\u001b[32;1mTest Naive Bayes:\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {naive_bayes_iris.evaluate(test_iris, test_labels_iris):.4f}\n\tPrecision: {precision(naive_bayes_iris, test_iris, test_labels_iris):.4f}\n\tRecall: {recall(naive_bayes_iris, test_iris, test_labels_iris):.4f}\n\tF1-score: {f1_score(naive_bayes_iris, test_iris, test_labels_iris):.4f}\n\tConfusion Matrix: \n{confusion_matrix(naive_bayes_iris, test_iris, test_labels_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {naive_bayes_wine.evaluate(test_wine, test_labels_wine):.4f}\n\tPrecision: {precision(naive_bayes_wine, test_wine, test_labels_wine):.4f}\n\tRecall: {recall(naive_bayes_wine, test_wine, test_labels_wine):.4f}\n\tF1-score: {f1_score(naive_bayes_wine, test_wine, test_labels_wine):.4f}\n\tConfusion Matrix: \n{confusion_matrix(naive_bayes_wine, test_wine, test_labels_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {naive_bayes_abalone.evaluate(test_abalone, test_labels_abalone):.4f}\n\tPrecision: {precision(naive_bayes_abalone, test_abalone, test_labels_abalone):.4f}\n\tRecall: {recall(naive_bayes_abalone, test_abalone, test_labels_abalone):.4f}\n\tF1-score: {f1_score(naive_bayes_abalone, test_abalone, test_labels_abalone):.4f}\n\tConfusion Matrix: \n{confusion_matrix(naive_bayes_abalone, test_abalone, test_labels_abalone)}\n')
+print("\n\u001b[31;1mTest Naive Bayes:\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = np.array([nb_iris.predict(x) for x in test_iris])
+print_prediction_summary(predictions, test_labels_iris)
 
-# Sklearn Testing
-sklearn_nb_predict_iris = sklearn_nb_iris.predict(test_iris)
-sklearn_nb_predict_wine = sklearn_nb_wine.predict(test_wine)
-sklearn_nb_predict_abalone = sklearn_nb_abalone.predict(test_abalone)
-print("\n\u001b[32;1mTest Naive Bayes (sklearn):\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {sklearn_nb_iris.score(test_iris, test_labels_iris):.4f}\n\tPrecision: {metrics.precision_score(test_labels_iris, sklearn_nb_predict_iris, average="micro"):.4f}\n\tRecall: {metrics.recall_score(test_labels_iris, sklearn_nb_predict_iris, average="micro"):.4f}\n\tF1-score: {metrics.f1_score(test_labels_iris, sklearn_nb_predict_iris, average="micro"):.4f}\n\tConfusion Matrix: \n{metrics.confusion_matrix(test_labels_iris, sklearn_nb_predict_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {sklearn_nb_wine.score(test_wine, test_labels_wine):.4f}\n\tPrecision: {metrics.precision_score(test_labels_wine, sklearn_nb_predict_wine, average="micro"):.4f}\n\tRecall: {metrics.recall_score(test_labels_wine, sklearn_nb_predict_wine, average="micro"):.4f}\n\tF1-score: {metrics.f1_score(test_labels_wine, sklearn_nb_predict_wine, average="micro"):.4f}\n\tConfusion Matrix: \n{metrics.confusion_matrix(test_labels_wine, sklearn_nb_predict_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {sklearn_nb_abalone.score(test_abalone, test_labels_abalone):.4f}\n\tPrecision: {metrics.precision_score(test_labels_abalone, sklearn_nb_predict_abalone, average="micro"):.4f}\n\tRecall: {metrics.recall_score(test_labels_abalone, sklearn_nb_predict_abalone, average="micro"):.4f}\n\tF1-score: {metrics.f1_score(test_labels_abalone, sklearn_nb_predict_abalone, average="micro"):.4f}\n\tConfusion Matrix: \n{metrics.confusion_matrix(test_labels_abalone, sklearn_nb_predict_abalone)}\n')
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = np.array([nb_abalone.predict(x) for x in test_abalone])
+print_prediction_summary(predictions, test_labels_abalone)
+
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = np.array([nb_wine.predict(x) for x in test_wine])
+print_prediction_summary(predictions, test_labels_wine)
 
 # KNN
-
-# Initialisez vos paramètres
 k_values = [2, 3, 5, 7, 9]
-distance_metrics = ['euclidean', 'manhattan', 'chebyshev', 'minkowski']
+distances = ["euclidean", "manhattan", "chebyshev", "minkowski"]
+folds = 3
 
-best_k_iris, best_distance_metric_iris, best_accuracy_iris = None, None, 0
+results_iris, best_k_iris, best_distance_iris, best_accuracy_iris = cross_validation_knn(
+    train_iris, train_labels_iris, k_values, distances, folds)
 
-# Selection des meilleurs hyperparamètres
-best_k_iris, best_distance_metric_iris, best_accuracy_iris = cross_validation_knn(train_iris, train_labels_iris, k_values, distance_metrics)
-print(f'\u001b[34mIris:\u001b[0m\n\tBest k: {best_k_iris}, \n\tBest distance metric: {best_distance_metric_iris}, \n\tBest accuracy: {best_accuracy_iris}\n')
-best_k_wine, best_distance_metric_wine, best_accuracy_wine = cross_validation_knn(train_wine, train_labels_wine, k_values, distance_metrics)
-print(f'\u001b[35mWine:\u001b[0m\n\tBest k: {best_k_wine}, \n\tBest distance metric: {best_distance_metric_wine}, \n\tBest accuracy: {best_accuracy_wine}\n')
-best_k_abalone, best_distance_metric_abalone, best_accuracy_abalone = cross_validation_knn(train_abalone, train_labels_abalone, k_values, distance_metrics)
-print(f'\u001b[33mAbalone:\u001b[0m\n\tBest k: {best_k_abalone}, \n\tBest distance metric: {best_distance_metric_abalone}, \n\tBest accuracy: {best_accuracy_abalone}\n')
+print("\n\u001b[31;1mTrain KNN:\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+print(f"\tBest k: {best_k_iris}")
+print(f"\tBest distance: {best_distance_iris}")
+print(f"\tBest accuracy: {best_accuracy_iris}")
+print("\tResults:")
+for key, value in results_iris.items():
+    print(f"\t\tK: {key[0]}, Distance: {key[1]}, Accuracy: {value}")
 
-# Initialisez/instanciez vos classifieurs avec leurs paramètres
-knn_iris = Knn(k=best_k_iris, distance_metric=best_distance_metric_iris)
-knn_wine = Knn(k=best_k_wine, distance_metric=best_distance_metric_wine)
-knn_abalone = Knn(k=best_k_abalone,distance_metric=best_distance_metric_abalone)
+results_abalone, best_k_abalone, best_distance_abalone, best_accuracy_abalone = cross_validation_knn(
+    train_abalone, train_labels_abalone, k_values, distances, folds)
 
-# sklearn classifieur pour comparer
-sklearn_knn_iris = KNeighborsClassifier(n_neighbors=best_k_iris, metric=best_distance_metric_iris)
-sklearn_knn_wine = KNeighborsClassifier(n_neighbors=best_k_wine, metric=best_distance_metric_wine)
-sklearn_knn_abalone = KNeighborsClassifier(n_neighbors=best_k_abalone, metric=best_distance_metric_abalone)
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+print(f"\tBest k: {best_k_abalone}")
+print(f"\tBest distance: {best_distance_abalone}")
+print(f"\tBest accuracy: {best_accuracy_abalone}")
+print("\tResults:")
+for key, value in results_abalone.items():
+    print(f"\t\tK: {key[0]}, Distance: {key[1]}, Accuracy: {value}")
 
-# Entrainez votre classifieur
+results_wine, best_k_wine, best_distance_wine, best_accuracy_wine = cross_validation_knn(
+    train_wine, train_labels_wine, k_values, distances, folds)
+
+print("\n\u001b[32;1mWine:\u001b[0m")
+print(f"\tBest k: {best_k_wine}")
+print(f"\tBest distance: {best_distance_wine}")
+print(f"\tBest accuracy: {best_accuracy_wine}")
+print("\tResults:")
+for key, value in results_wine.items():
+    print(f"\t\tK: {key[0]}, Distance: {key[1]}, Accuracy: {value}")
+
+knn_iris = Knn(k=best_k_iris, distance_metric=best_distance_iris)
+knn_abalone = Knn(k=best_k_abalone, distance_metric=best_distance_abalone)
+knn_wine = Knn(k=best_k_wine, distance_metric=best_distance_wine)
+
 knn_iris.train(train_iris, train_labels_iris)
-knn_wine.train(train_wine, train_labels_wine)
 knn_abalone.train(train_abalone, train_labels_abalone)
+knn_wine.train(train_wine, train_labels_wine)
 
-# sklearn training
-sklearn_knn_iris.fit(train_iris, train_labels_iris)
-sklearn_knn_wine.fit(train_wine, train_labels_wine)
-sklearn_knn_abalone.fit(train_abalone, train_labels_abalone)
+print("\n\u001b[31;1mTrain KNN:\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = np.array([knn_iris.predict(x) for x in train_iris])
+print_prediction_summary(predictions, train_labels_iris)
 
-print("\n\u001b[31;1mTrain:\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {knn_iris.evaluate(train_iris, train_labels_iris)}\n\tPrécision: {precision(knn_iris, train_iris, train_labels_iris)}\n\tRappel: {recall(knn_iris, train_iris, train_labels_iris)}\n\tF1-score: {f1_score(knn_iris, train_iris, train_labels_iris)}\n\tMatrice de confusion: \n{confusion_matrix(knn_iris, train_iris, train_labels_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {knn_wine.evaluate(train_wine, train_labels_wine)}\n\tPrécision: {precision(knn_wine, train_wine, train_labels_wine)}\n\tRappel: {recall(knn_wine, train_wine, train_labels_wine)}\n\tF1-score: {f1_score(knn_wine, train_wine, train_labels_wine)}\n\tMatrice de confusion: \n{confusion_matrix(knn_wine, train_wine, train_labels_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {knn_abalone.evaluate(train_abalone, train_labels_abalone)}\n\tPrécision: {precision(knn_abalone, train_abalone, train_labels_abalone)}\n\tRappel: {recall(knn_abalone, train_abalone, train_labels_abalone)}\n\tF1-score: {f1_score(knn_abalone, train_abalone, train_labels_abalone)}\n\tMatrice de confusion: \n{confusion_matrix(knn_abalone, train_abalone, train_labels_abalone)}\n')
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = np.array([knn_abalone.predict(x) for x in train_abalone])
+print_prediction_summary(predictions, train_labels_abalone)
 
-# sklearn train results
-sklearn_knn_predict_iris = sklearn_knn_iris.predict(train_iris)
-sklearn_knn_predict_wine = sklearn_knn_wine.predict(train_wine)
-sklearn_knn_predict_abalone = sklearn_knn_abalone.predict(train_abalone)
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = np.array([knn_wine.predict(x) for x in train_wine])
+print_prediction_summary(predictions, train_labels_wine)
 
-print("\n\u001b[31;1mTrain (sklearn):\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {sklearn_knn_iris.score(train_iris, train_labels_iris)}\n\tPrécision: {metrics.precision_score(train_labels_iris, sklearn_knn_predict_iris, average="micro")}\n\tRappel: {metrics.recall_score(train_labels_iris, sklearn_knn_predict_iris, average="micro")}\n\tF1-score: {metrics.f1_score(train_labels_iris, sklearn_knn_predict_iris, average="micro")}\n\tMatrice de confusion: \n{metrics.confusion_matrix(train_labels_iris, sklearn_knn_predict_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {sklearn_knn_wine.score(train_wine, train_labels_wine)}\n\tPrécision: {metrics.precision_score(train_labels_wine, sklearn_knn_predict_wine, average="micro")}\n\tRappel: {metrics.recall_score(train_labels_wine, sklearn_knn_predict_wine, average="micro")}\n\tF1-score: {metrics.f1_score(train_labels_wine, sklearn_knn_predict_wine, average="micro")}\n\tMatrice de confusion: \n{metrics.confusion_matrix(train_labels_wine, sklearn_knn_predict_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {sklearn_knn_abalone.score(train_abalone, train_labels_abalone)}\n\tPrécision: {metrics.precision_score(train_labels_abalone, sklearn_knn_predict_abalone, average="micro")}\n\tRappel: {metrics.recall_score(train_labels_abalone, sklearn_knn_predict_abalone, average="micro")}\n\tF1-score: {metrics.f1_score(train_labels_abalone, sklearn_knn_predict_abalone, average="micro")}\n\tMatrice de confusion: \n{metrics.confusion_matrix(train_labels_abalone, sklearn_knn_predict_abalone)}\n')
+print("\n\u001b[31;1mTest KNN:\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = np.array([knn_iris.predict(x) for x in test_iris])
+print_prediction_summary(predictions, test_labels_iris)
 
-# knn test results
-print("\n\u001b[32;1mTest:\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {knn_iris.evaluate(test_iris, test_labels_iris)}\n\tPrécision: {precision(knn_iris, test_iris, test_labels_iris)}\n\tRappel: {recall(knn_iris, test_iris, test_labels_iris)}\n\tF1-score: {f1_score(knn_iris, test_iris, test_labels_iris)}\n\tMatrice de confusion: \n{confusion_matrix(knn_iris, test_iris, test_labels_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {knn_wine.evaluate(test_wine, test_labels_wine)}\n\tPrécision: {precision(knn_wine, test_wine, test_labels_wine)}\n\tRappel: {recall(knn_wine, test_wine, test_labels_wine)}\n\tF1-score: {f1_score(knn_wine, test_wine, test_labels_wine)}\n\tMatrice de confusion: \n{confusion_matrix(knn_wine, test_wine, test_labels_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {knn_abalone.evaluate(test_abalone, test_labels_abalone)}\n\tPrécision: {precision(knn_abalone, test_abalone, test_labels_abalone)}\n\tRappel: {recall(knn_abalone, test_abalone, test_labels_abalone)}\n\tF1-score: {f1_score(knn_abalone, test_abalone, test_labels_abalone)}\n\tMatrice de confusion: \n{confusion_matrix(knn_abalone, test_abalone, test_labels_abalone)}\n')
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = np.array([knn_abalone.predict(x) for x in test_abalone])
+print_prediction_summary(predictions, test_labels_abalone)
 
-# sklearn test results
-sklearn_knn_predict_iris = sklearn_knn_iris.predict(test_iris)
-sklearn_knn_predict_wine = sklearn_knn_wine.predict(test_wine)
-sklearn_knn_predict_abalone = sklearn_knn_abalone.predict(test_abalone)
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = np.array([knn_wine.predict(x) for x in test_wine])
+print_prediction_summary(predictions, test_labels_wine)
 
-print("\n\u001b[32;1mTest (sklearn):\u001b[0m")
-print(f'\u001b[34mIris:\u001b[0m\n\tAccuracy: {sklearn_knn_iris.score(test_iris, test_labels_iris)}\n\tPrécision: {metrics.precision_score(test_labels_iris, sklearn_knn_predict_iris, average="micro")}\n\tRappel: {metrics.recall_score(test_labels_iris, sklearn_knn_predict_iris, average="micro")}\n\tF1-score: {metrics.f1_score(test_labels_iris, sklearn_knn_predict_iris, average="micro")}\n\tMatrice de confusion: \n{metrics.confusion_matrix(test_labels_iris, sklearn_knn_predict_iris)}\n')
-print(f'\u001b[35mWine:\u001b[0m\n\tAccuracy: {sklearn_knn_wine.score(test_wine, test_labels_wine)}\n\tPrécision: {metrics.precision_score(test_labels_wine, sklearn_knn_predict_wine, average="micro")}\n\tRappel: {metrics.recall_score(test_labels_wine, sklearn_knn_predict_wine, average="micro")}\n\tF1-score: {metrics.f1_score(test_labels_wine, sklearn_knn_predict_wine, average="micro")}\n\tMatrice de confusion: \n{metrics.confusion_matrix(test_labels_wine, sklearn_knn_predict_wine)}\n')
-print(f'\u001b[33mAbalone:\u001b[0m\n\tAccuracy: {sklearn_knn_abalone.score(test_abalone, test_labels_abalone)}\n\tPrécision: {metrics.precision_score(test_labels_abalone, sklearn_knn_predict_abalone, average="micro")}\n\tRappel: {metrics.recall_score(test_labels_abalone, sklearn_knn_predict_abalone, average="micro")}\n\tF1-score: {metrics.f1_score(test_labels_abalone, sklearn_knn_predict_abalone, average="micro")}\n\tMatrice de confusion: \n{metrics.confusion_matrix(test_labels_abalone, sklearn_knn_predict_abalone)}\n')
+# Scikit-learn
+gnb_iris_sklearn = GaussianNB()
+gnb_abalone_sklearn = GaussianNB()
+gnb_wine_sklearn = GaussianNB()
 
-# Temps d'exécution
-print("\nTemps d'exécution moyen pour 100 prédictions: ")
-temps_depart_iris = time.time()
-for i in range(100):
-    naive_bayes_iris.predict(test_iris)
-temps_fin_iris = time.time() - temps_depart_iris
-temps_depart_wine = time.time()
-for i in range(100):
-    naive_bayes_wine.predict(test_wine)
-temps_fin_wine = time.time() - temps_depart_wine
-temps_depart_abalone = time.time()
-for i in range(100):
-    naive_bayes_abalone.predict(test_abalone)
-temps_fin_abalone = time.time() - temps_depart_abalone
-print("nb_iris: ", temps_fin_iris/100, " nb_wine: ",
-      temps_fin_wine/100, " nb_abalone ", temps_fin_abalone/100)
-temps_depart_knn_iris = time.time()
-for i in range(100):
-    knn_iris.predict(test_iris)
-temps_fin_knn_iris = time.time() - temps_depart_knn_iris
-temps_depart_knn_wine = time.time()
-for i in range(100):
-    knn_wine.predict(test_wine)
-temps_fin_knn_wine = time.time() - temps_depart_knn_wine
-temps_depart_knn_abalone = time.time()
-for i in range(100):
-    knn_abalone.predict(test_abalone)
-temps_fin_knn_abalone = time.time() - temps_depart_knn_abalone
-print("knn_iris: ", temps_fin_knn_iris/100, " knn_wine: ",
-      temps_fin_knn_wine/100, " knn_abalone ", temps_fin_knn_abalone/100)
+gnb_iris_sklearn.fit(train_iris, train_labels_iris)
+gnb_abalone_sklearn.fit(train_abalone, train_labels_abalone)
+gnb_wine_sklearn.fit(train_wine, train_labels_wine)
+
+print("\n\u001b[31;1mTrain Scikit-learn (Naive Bayes):\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = gnb_iris_sklearn.predict(train_iris)
+print_prediction_summary(predictions, train_labels_iris)
+
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = gnb_abalone_sklearn.predict(train_abalone)
+print_prediction_summary(predictions, train_labels_abalone)
+
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = gnb_wine_sklearn.predict(train_wine)
+print_prediction_summary(predictions, train_labels_wine)
+
+print("\n\u001b[31;1mTest Scikit-learn (Naive Bayes):\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = gnb_iris_sklearn.predict(test_iris)
+print_prediction_summary(predictions, test_labels_iris)
+
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = gnb_abalone_sklearn.predict(test_abalone)
+print_prediction_summary(predictions, test_labels_abalone)
+
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = gnb_wine_sklearn.predict(test_wine)
+print_prediction_summary(predictions, test_labels_wine)
+
+knn_iris_sklearn = KNeighborsClassifier(
+    n_neighbors=best_k_iris, metric=best_distance_iris)
+knn_abalone_sklearn = KNeighborsClassifier(
+    n_neighbors=best_k_abalone, metric=best_distance_abalone)
+knn_wine_sklearn = KNeighborsClassifier(
+    n_neighbors=best_k_wine, metric=best_distance_wine)
+
+knn_iris_sklearn.fit(train_iris, train_labels_iris)
+knn_abalone_sklearn.fit(train_abalone, train_labels_abalone)
+knn_wine_sklearn.fit(train_wine, train_labels_wine)
+
+print("\n\u001b[31;1mTrain Scikit-learn (KNN):\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = knn_iris_sklearn.predict(train_iris)
+print_prediction_summary(predictions, train_labels_iris)
+
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = knn_abalone_sklearn.predict(train_abalone)
+print_prediction_summary(predictions, train_labels_abalone)
+
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = knn_wine_sklearn.predict(train_wine)
+print_prediction_summary(predictions, train_labels_wine)
+
+print("\n\u001b[31;1mTest Scikit-learn (KNN):\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+predictions = knn_iris_sklearn.predict(test_iris)
+print_prediction_summary(predictions, test_labels_iris)
+
+print("\n\u001b[32;1mAbalone:\u001b[0m")
+predictions = knn_abalone_sklearn.predict(test_abalone)
+print_prediction_summary(predictions, test_labels_abalone)
+
+print("\n\u001b[32;1mWine:\u001b[0m")
+predictions = knn_wine_sklearn.predict(test_wine)
+print_prediction_summary(predictions, test_labels_wine)
+
+# Comparison between the two implementations
+print("\n\u001b[31;1mComparison:\u001b[0m")
+print("\u001b[33;1mNaive Bayes VS KNN:\u001b[0m")
+
+print("\u001b[32;1mIris:\u001b[0m")
+print(f"\tNaive Bayes: {nb_iris.evaluate(test_iris, test_labels_iris)}")
+print(f"\tKNN: {knn_iris.evaluate(test_iris, test_labels_iris)}")
+print(
+    f"\tScikit-learn (Naive Bayes): {gnb_iris_sklearn.score(test_iris, test_labels_iris)}")
+print(
+    f"\tScikit-learn (KNN): {knn_iris_sklearn.score(test_iris, test_labels_iris)}")
+
+print("\u001b[32;1mAbalone:\u001b[0m")
+print(f"\tNaive Bayes: {nb_abalone.evaluate(
+    test_abalone, test_labels_abalone)}")
+print(f"\tKNN: {knn_abalone.evaluate(test_abalone, test_labels_abalone)}")
+print(f"\tScikit-learn (Naive Bayes): {
+      gnb_abalone_sklearn.score(test_abalone, test_labels_abalone)}")
+print(
+    f"\tScikit-learn (KNN): {knn_abalone_sklearn.score(test_abalone, test_labels_abalone)}")
+
+print("\u001b[32;1mWine:\u001b[0m")
+print(f"\tNaive Bayes: {nb_wine.evaluate(test_wine, test_labels_wine)}")
+print(f"\tKNN: {knn_wine.evaluate(test_wine, test_labels_wine)}")
+print(
+    f"\tScikit-learn (Naive Bayes): {gnb_wine_sklearn.score(test_wine, test_labels_wine)}")
+print(
+    f"\tScikit-learn (KNN): {knn_wine_sklearn.score(test_wine, test_labels_wine)}")

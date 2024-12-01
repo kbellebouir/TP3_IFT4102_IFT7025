@@ -1,13 +1,3 @@
-"""
-Vous allez definir une classe pour chaque algorithme que vous allez developper,
-votre classe doit contenir au moins les 3 methodes definies ici bas, 
-	* train    : pour entrainer le modele sur l'ensemble d'entrainement.
-	* predict  : pour predire la classe d'un exemple donne.
-	* evaluate : pour evaluer le classifieur avec les metriques demandees. 
-vous pouvez rajouter d'autres methodes qui peuvent vous etre utiles, mais la correction
-se fera en utilisant les methodes train, predict et evaluate de votre code.
-"""
-
 import numpy as np
 
 
@@ -22,7 +12,7 @@ class NaiveBayes:
         self.var = {}
         self.priors = {}
 
-    def train(self, train, train_labels):
+    def train(self, train: np.ndarray, train_labels: np.ndarray) -> None:
         """
         Entrainer le modele Naive Bayes sur l'ensemble d'entrainement.
 
@@ -37,7 +27,7 @@ class NaiveBayes:
             self.var[c] = X_c.var(axis=0)
             self.priors[c] = X_c.shape[0] / train.shape[0]
 
-    def predict(self, x):
+    def predict(self, x: int) -> int:
         """
         Predire la classe d'un exemple donne en entree.
 
@@ -55,10 +45,11 @@ class NaiveBayes:
                 ((x - self.mean[c]) ** 2) / (self.var[c]))
             posterior = prior + likelihood
             posteriors.append(posterior)
+
         resultat = self.classes[np.argmax(posteriors)]
         return resultat
 
-    def evaluate(self, X, y):
+    def evaluate(self, X: np.ndarray, y: np.ndarray) -> float:
         """
         Evaluer le classifieur sur un ensemble de test.
 
