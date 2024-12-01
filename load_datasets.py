@@ -34,7 +34,13 @@ def load_iris_dataset(train_ratio):
     conversion_labels = {'Iris-setosa': 0,'Iris-versicolor': 1, 'Iris-virginica': 2}
 
     # Le fichier du dataset est dans le dossier datasets en attaché
-    f = open('datasets/bezdekIris.data', 'r')
+    with open('datasets/bezdekIris.data', 'r') as f:
+        dataset = np.loadtxt(
+            f,
+            delimiter=',',
+            dtype=float,
+            converters={4: lambda s: conversion_labels[s.decode('utf-8')]}
+        )
 
     # REMARQUE très importante :
     # remarquez bien comment les exemples sont ordonnés dans
@@ -43,8 +49,6 @@ def load_iris_dataset(train_ratio):
     # vous n'allez avoir aucun exemple du type Iris-virginica pour l'entrainement, pensez
     # donc à utiliser la fonction random.shuffle pour melanger les exemples du dataset avant de séparer
     # en train et test.
-    dataset = np.loadtxt(f, delimiter=',', dtype=float, converters={
-                         4: lambda s: conversion_labels[s]})
     np.random.shuffle(dataset)
     X = dataset[:, :4]
     y = dataset[:, 4]
@@ -132,13 +136,18 @@ def load_abalone_dataset(train_ratio):
         - test_labels : contient les étiquettes pour chaque exemple dans test, de telle sorte
           que : test_labels[i] est l'etiquette pour l'exemple test[i]
     """
-    f = open('datasets/abalone-intervalles.csv',
-             # La fonction doit retourner 4 matrices (ou vecteurs) de type Numpy.
-             'r')
     # Male : 0, Female : 1, Infant : 2
     conversion_sexe = {'M': 0, 'F': 1, 'I': 2}
 
-    dataset = np.loadtxt(f, delimiter=',', dtype=float, converters={0: lambda s: conversion_sexe[s]})
+    with open('datasets/abalone-intervalles.csv', 'r') as f:
+        # Load the dataset, converting the first column using `conversion_sexe`
+        dataset = np.loadtxt(
+            f,
+            delimiter=',',
+            dtype=float,
+            converters={0: lambda s: conversion_sexe[s.decode('utf-8')]}
+        )
+        
     random.shuffle(dataset)
     X = dataset[:, :8]
     # make the first column of X to be integers in X
