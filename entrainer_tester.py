@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 
@@ -94,10 +95,6 @@ train_wine, train_labels_wine, test_wine, test_labels_wine = load_wine_dataset(
     train_ratio)
 train_abalone, train_labels_abalone, test_abalone, test_labels_abalone = load_abalone_dataset(
     train_ratio)
-
-# print(len(train_iris), len(train_labels_iris), len(test_iris), len(test_labels_iris))
-# print(len(train_wine), len(train_labels_wine), len(test_wine), len(test_labels_wine))
-# print(len(train_abalone), len(train_labels_abalone), len(test_abalone), len(test_labels_abalone))
 
 # Naive Bayes
 nb_iris = NaiveBayes()
@@ -312,3 +309,48 @@ print(
     f"\tScikit-learn (Naive Bayes): {gnb_wine_sklearn.score(test_wine, test_labels_wine)}")
 print(
     f"\tScikit-learn (KNN): {knn_wine_sklearn.score(test_wine, test_labels_wine)}")
+
+# Time comparison
+start_time_iris_nb = time.time()
+nb_iris.evaluate(test_iris, test_labels_iris)
+end_time_iris_nb = time.time()
+
+start_time_abalone_nb = time.time()
+nb_abalone.evaluate(test_abalone, test_labels_abalone)
+end_time_abalone_nb = time.time()
+
+start_time_wine_nb = time.time()
+nb_wine.evaluate(test_wine, test_labels_wine)
+end_time_wine_nb = time.time()
+
+start_time_iris_knn = time.time()
+knn_iris.evaluate(test_iris, test_labels_iris)
+end_time_iris_knn = time.time()
+
+start_time_abalone_knn = time.time()
+knn_abalone.evaluate(test_abalone, test_labels_abalone)
+end_time_abalone_knn = time.time()
+
+start_time_wine_knn = time.time()
+knn_wine.evaluate(test_wine, test_labels_wine)
+end_time_wine_knn = time.time()
+
+time_iris_nb_ms = (end_time_iris_nb - start_time_iris_nb) * 1000
+time_abalone_nb_ms = (end_time_abalone_nb - start_time_abalone_nb) * 1000
+time_wine_nb_ms = (end_time_wine_nb - start_time_wine_nb) * 1000
+time_iris_knn_ms = (end_time_iris_knn - start_time_iris_knn) * 1000
+time_abalone_knn_ms = (end_time_abalone_knn - start_time_abalone_knn) * 1000
+time_wine_knn_ms = (end_time_wine_knn - start_time_wine_knn) * 1000
+
+print("\n\u001b[31;1mTime comparison:\u001b[0m")
+print("\u001b[32;1mIris:\u001b[0m")
+print(f"\tNaive Bayes: {time_iris_nb_ms} ms")
+print(f"\tKNN: {time_iris_knn_ms} ms")
+
+print("\u001b[32;1mAbalone:\u001b[0m")
+print(f"\tNaive Bayes: {time_abalone_nb_ms} ms")
+print(f"\tKNN: {time_abalone_knn_ms} ms")
+
+print("\u001b[32;1mWine:\u001b[0m")
+print(f"\tNaive Bayes: {time_wine_nb_ms} ms")
+print(f"\tKNN: {time_wine_knn_ms} ms")
